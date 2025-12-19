@@ -1,0 +1,28 @@
+[project]
+name = "red_note"
+version = "0.1.0"
+description = "red_note using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[google-genai,tools]==1.7.1",
+]
+
+[project.scripts]
+red_note = "red_note.main:run"
+run_crew = "red_note.main:run"
+train = "red_note.main:train"
+replay = "red_note.main:replay"
+test = "red_note.main:test"
+run_with_trigger = "red_note.main:run_with_trigger"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[tool.crewai]
+type = "crew"
