@@ -2,7 +2,9 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import SerperDevTool
 from pydantic import BaseModel, Field
+from crewai import Agent, Crew, Process, Task, LLM  # 👈 必须导入 LLM
 from typing import List
+import os
 
 # 1. 结构化模型定义（保持不变）
 class XHSPost(BaseModel):
@@ -17,6 +19,15 @@ class TechTrendCrew():
 
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
+
+    # --- 核心修改：创建一个公用的 LLM 对象 ---
+    # 这样我们可以确保所有 Agent 都准确使用小米的配置
+    def get_mimo_llm(self):
+        return LLM(
+            model="openai/mimo-v2-flash",  # 小米的模型名称
+            base_url="https://api.xiaomimimo.com/v1",  # 小米的地址
+            api_key=os.environ.get("OPENAI_API_KEY")   # 从 .env 读取 Key
+        )
 
     @agent
     def trend_scout(self) -> Agent:
@@ -33,6 +44,7 @@ class TechTrendCrew():
         return Agent(
             config=self.agents_config['xhs_creator'],
             verbose=True,
+            llm=self.get_mimo_llm(),  # 👈 显式指定 LLM
             allow_delegation=False
         )
 

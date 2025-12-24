@@ -1,114 +1,98 @@
-import os
-import time
-
-
-# --- 更新后的代理配置 ---
-proxy_url = "http://127.0.0.1:17249"
-
-os.environ["http_proxy"] = proxy_url
-os.environ["https_proxy"] = proxy_url
-os.environ["HTTP_PROXY"] = proxy_url
-os.environ["HTTPS_PROXY"] = proxy_url
-
-# 如果你是 Windows 环境，有时强制关闭 SSL 验证能解决握手失败
-os.environ["PYTHONHTTPSVERIFY"] = "0"
-
 import sys
-# ⚠️ 注意：下面的 RedNoteCrew 必须和你 crew.py 里的 class 类名完全一致！
-# 如果 crew.py 里写的是 class TechTrendCrew():，这里就改成 from red_note.crew import TechTrendCrew
+import os
+import re  # 导入正则模块，用于清洗文件名
+import json  # 导入json模块，用于手动保存
+from dotenv import load_dotenv
+
+# 1. 加载环境变量 (必须在最前面)
+load_dotenv()
+
+# 2. 路径修复
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(current_dir)
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
 from red_note.crew import TechTrendCrew
 
 
 def run():
     """
-    运行 Crew 团队，包含自动重试逻辑以应对 API 频率限制 (429)。
+    运行 Crew 团队，包含结果美化和动态文件保存功能。
     """
     inputs = {
-        'domains': '纯欲穿搭'
+        'domains': 'Coquette Aesthetic'  # 你可以随时改这个主题
     }
 
-    max_retries = 3  # 最大重试次数
-    retry_delay = 30  # 触发 429 后的等待秒数
+    print(f"🚀 正在启动 Crew，生成主题：{inputs['domains']}...")
 
-    for attempt in range(max_retries):
-        try:
-            # 启动团队
-            result = TechTrendCrew().crew().kickoff(inputs=inputs)
+    try:
+        # 启动团队
+        result = TechTrendCrew().crew().kickoff(inputs=inputs)
 
-            # --- 成功后的输出处理 ---
-            print("\n" + "=" * 30)
-            print("✨ 任务执行成功！")
-            print("=" * 30)
+        # 获取结构化数据对象
+        pydantic_output = result.pydantic
 
-            # 1. 获取给人类看的“原始文案”
-            print("\n--- 人类阅读版 ---")
+        if pydantic_output:
+            # ==================================================
+            # 🎨 功能 1：控制台美化输出 (解决 \n 看着乱的问题)
+            # ==================================================
+            print("\n" + "=" * 40)
+            print("📱 --- 小红书文案预览 --- 📱")
+            print("=" * 40)
+
+            print(f"【标题】：\n{pydantic_output.title}\n")
+
+            # 核心：把 \n 替换成真正的换行，并去掉首尾空格
+            pretty_content = pydantic_output.content.replace(r"\n", "\n").strip()
+            print(f"【正文】：\n{pretty_content}\n")
+
+            # 处理标签
+            tags = " ".join([f"#{tag}" for tag in pydantic_output.hashtags])
+            print(f"【标签】：\n{tags}\n")
+
+            print("-" * 20)
+            print("【AI 配图指令】：")
+            for i, prompt in enumerate(pydantic_output.image_prompts, 1):
+                print(f"{i}. {prompt}")
+
+            # ==================================================
+            # 💾 功能 2：以标题命名并保存 JSON 文件
+            # ==================================================
+
+            # 1. 获取标题
+            raw_title = pydantic_output.title
+
+            # 2. 清洗文件名 (Windows 不允许文件名包含 \ / : * ? " < > |)
+            # 我们用正则把这些符号替换为空
+            safe_filename = re.sub(r'[\\/*?:"<>|]', "", raw_title)
+
+            # 3. 截断文件名 (防止标题太长报错，限制前50个字)
+            safe_filename = safe_filename[:50].strip()
+
+            # 4. 拼接最终路径
+            output_dir = "output"
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            file_path = os.path.join(output_dir, f"{safe_filename}.json")
+
+            # 5. 手动保存
+            # result.json_dict 包含了所有数据
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(result.json_dict, f, ensure_ascii=False, indent=4)
+
+            print("\n" + "=" * 40)
+            print(f"✅ 文件已保存为：{file_path}")
+            print("=" * 40)
+
+        else:
+            print("\n⚠️ 未检测到结构化输出，显示原始结果：")
             print(result.raw)
 
-            # 2. 获取给机器看的“结构化数据”
-            print("\n--- 结构化数据 (JSON) ---")
-            print(result.json_dict)
-
-            # 3. 直接操作特定字段
-            if result.pydantic:
-                print("\n--- 关键字段提取 ---")
-                print(f"标题：{result.pydantic.title}")
-                print(f"标签数：{len(result.pydantic.hashtags)}")
-
-            # 成功后跳出循环
-            break
-
-        except Exception as e:
-            # 检查是否为频率限制错误 (429)
-            error_msg = str(e)
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                if attempt < max_retries - 1:
-                    print(f"\n⚠️ 触发 API 频率限制。正在等待 {retry_delay} 秒后进行第 {attempt + 2} 次重试...")
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    print("\n❌ 已达到最大重试次数，请稍后再运行或检查 API 配额。")
-                    raise e
-            else:
-                # 如果是其他类型的错误（如代码错误、网络断开），直接抛出
-                print(f"\n❌ 运行出错: {e}")
-                raise e
-
-
-# 下面的函数是用于训练和测试的，暂时可以不动
-def train():
-    """
-    Train the crew for a given number of iterations.
-    """
-    inputs = {
-        'domains': 'Makeup Trends'
-    }
-    try:
-        TechTrendCrew().crew().train(n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs)
-
     except Exception as e:
-        raise Exception(f"An error occurred while training the crew: {e}")
+        print(f"\n❌ 运行出错: {e}")
+        raise e
 
 
-def replay():
-    """
-    Replay the crew execution from a specific task.
-    """
-    try:
-        TechTrendCrew().crew().replay(task_id=sys.argv[1])
-
-    except Exception as e:
-        raise Exception(f"An error occurred while replaying the crew: {e}")
-
-
-def test():
-    """
-    Test the crew execution and returns the results.
-    """
-    inputs = {
-        'domains': 'Makeup Trends'
-    }
-    try:
-        TechTrendCrew().crew().test(n_iterations=int(sys.argv[1]), openai_model_name=sys.argv[2], inputs=inputs)
-
-    except Exception as e:
-        raise Exception(f"An error occurred while testing the crew: {e}")
+if __name__ == "__main__":
+    run()
